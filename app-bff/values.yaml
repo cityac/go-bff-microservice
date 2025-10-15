@@ -1,0 +1,13 @@
+# Default values for poly.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+bff:
+  port: 8080
+  api: 
+    name: bff
+
+imageCredentials:
+  name: credentials-name
+
+replicas: 1

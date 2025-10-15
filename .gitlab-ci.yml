@@ -1,0 +1,152 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+  GIT_SUBMODULE_FORCE_HTTPS: 1
+#
+.k8s_login:
+  - cat ${SERVICE_ACCOUNT} > key.json
+  - gcloud auth activate-service-account --key-file=key.json
+  - gcloud container clusters get-credentials ${CLUSTER} --zone ${ZONE} --project ${PROJECT}
+
+.helm_install:
+  - apt-get update && apt-get install gpg curl apt-transport-https --yes
+  - curl https://baltocdn.com/helm/signing.asc | gpg --dearmor | tee /usr/share/keyrings/helm.gpg > /dev/null
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" | tee /etc/apt/sources.list.d/helm-stable-debian.list
+  - apt-get update && apt-get install helm -y
+
+build_dev:
+  stage: build
+  variables:
+    buildenv: dev
+  script:
+    - docker build --build-arg CI_JOB_TOKEN=${CI_JOB_TOKEN} --build-arg buildenv=${buildenv} -t ${CI_REGISTRY_IMAGE}/releases:dev-${CI_COMMIT_SHA} -f docker/Dockerfile --compress .
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_JOB_TOKEN} ${CI_REGISTRY}
+    - docker push ${CI_REGISTRY_IMAGE}/releases:dev-${CI_COMMIT_SHA}
+  tags:
+    - shell-builder
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+
+build_stage:
+  stage: build
+  variables:
+    buildenv: stage
+  script:
+    - docker build --build-arg CI_JOB_TOKEN=${CI_JOB_TOKEN} --build-arg buildenv=${buildenv} -t ${CI_REGISTRY_IMAGE}/releases:stage-${CI_COMMIT_SHA} -f docker/Dockerfile --compress .
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_JOB_TOKEN} ${CI_REGISTRY}
+    - docker push ${CI_REGISTRY_IMAGE}/releases:stage-${CI_COMMIT_SHA}
+  tags:
+    - shell-builder
+  rules:
+    - if: $CI_COMMIT_BRANCH == "stage"
+
+
+build_prod-enterprise:
+  stage: build
+  variables:
+    buildenv: prod-enterprise
+  script:
+    - docker build --build-arg CI_JOB_TOKEN=${CI_JOB_TOKEN} --build-arg buildenv=${buildenv} -t ${CI_REGISTRY_IMAGE}/releases:prod-enterprise-${CI_COMMIT_SHA} -f docker/Dockerfile --compress .
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_JOB_TOKEN} ${CI_REGISTRY}
+    - docker push ${CI_REGISTRY_IMAGE}/releases:prod-enterprise-${CI_COMMIT_SHA}
+  tags:
+    - shell-builder
+  rules:
+    - if: $CI_COMMIT_BRANCH == "prod"
+      when: manual
+
+build_prod-HIDDEN:
+  stage: build
+  variables:
+    buildenv: prod-HIDDEN
+  script:
+    - docker build --build-arg CI_JOB_TOKEN=${CI_JOB_TOKEN} --build-arg buildenv=${buildenv} -t ${CI_REGISTRY_IMAGE}/releases:prod-HIDDEN-${CI_COMMIT_SHA} -f docker/Dockerfile --compress .
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_JOB_TOKEN} ${CI_REGISTRY}
+    - docker push ${CI_REGISTRY_IMAGE}/releases:prod-HIDDEN-${CI_COMMIT_SHA}
+  tags:
+    - shell-builder
+  rules:
+    - if: $CI_COMMIT_BRANCH == "prod"
+      when: manual
+
+build_prod-HIDDEN:
+  image: docker:latest
+  #variables:
+  #  DOCKER_HOST: tcp://docker:2375/
+  #  DOCKER_TLS_CERTDIR: ""
+  stage: build
+  #services:
+  #  - name: docker:dind
+  #    variables:
+  #      HEALTHCHECK_TCP_PORT: 2375
+  variables:
+    buildenv: prod-HIDDEN
+  script:
+    - docker build --build-arg CI_JOB_TOKEN=${CI_JOB_TOKEN} --build-arg buildenv=${buildenv} -t ${CI_REGISTRY_IMAGE}/releases:prod-HIDDEN-${CI_COMMIT_SHA} -f docker/Dockerfile --compress .
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_JOB_TOKEN} ${CI_REGISTRY}
+    - docker push ${CI_REGISTRY_IMAGE}/releases:prod-HIDDEN-${CI_COMMIT_SHA}
+  tags:
+    - shell-builder
+  rules:
+    - if: $CI_COMMIT_BRANCH == "prod"
+      when: manual
+
+deploy_dev:
+  stage: deploy
+  script:
+    - helm upgrade -i --set tag=${CI_COMMIT_SHA} --set appEnv='dev' --kube-context gke_dev-web-174812_europe-west1-c_sms-HIDDEN-dev --namespace=dev --wait --timeout 240s --debug bff app-bff
+  tags:
+    - shell-builder
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+
+deploy_stage:
+  stage: deploy
+  script:
+    - helm upgrade -i --set tag=${CI_COMMIT_SHA} --set appEnv='stage' --kube-context gke_web-sites-1200_europe-west1-c_sms-HIDDEN-stage --namespace=stage --wait --timeout 240s --debug bff app-bff
+  tags:
+    - shell-builder
+  rules:
+    - if: $CI_COMMIT_BRANCH == "stage"
+
+
+deploy_prod_enterprise:
+  stage: deploy
+  script:
+    - helm upgrade -i --set tag=${CI_COMMIT_SHA} --set appEnv='prod-enterprise' --kube-context gke_web-sites-1200_europe-west1-b_sms-HIDDEN-prod --namespace=enterprise --wait --timeout 240s --debug bff app-bff
+  tags:
+    - shell-builder
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: manual
+
+deploy_prod_HIDDEN:
+  stage: deploy
+  script:
+    - helm upgrade -i --set tag=${CI_COMMIT_SHA} --set appEnv='prod-HIDDEN' --kube-context gke_web-sites-1200_europe-west1-b_sms-HIDDEN-prod --namespace=HIDDEN --wait --timeout 240s --debug bff app-bff
+  tags:
+    - shell-builder
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: manual
+
+deploy_prod_HIDDEN:
+  variables:
+    CLUSTER: sms-HIDDEN
+    ZONE: europe-west1-b
+    PROJECT: HIDDEN-proj
+  stage: deploy
+  image: google/cloud-sdk
+  before_script:
+    - !reference [.k8s_login]
+    - !reference [.helm_install]
+  script:
+    - helm upgrade -i --set tag=${CI_COMMIT_SHA} --set appEnv='prod-HIDDEN' --kube-context gke_HIDDEN-proj_europe-west1-b_sms-HIDDEN --namespace=HIDDEN --wait --timeout 240s --debug bff app-bff
+  tags:
+    - HIDDEN-sms-HIDDEN
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: manual

@@ -1,0 +1,63 @@
+@startuml
+participant "Frontend" as F
+participant "BFF" as B
+participant "db_broker" as DB
+participant "HIDDEN-broker" as S
+participant "HIDDEN_provider" as BP
+participant "izonet" as I
+participant "mail_service" as M
+
+F -> B: POST (partnerID, productID)
+activate B
+
+B -> DB: partnerID
+activate DB
+DB --> B: PartnerName
+deactivate DB
+
+B -> DB: productID
+activate DB
+DB --> B: ProductName
+deactivate DB
+
+B -> S: HIDDENId
+activate S
+S --> B: SystemID
+deactivate S
+
+B -> BP: GET productId
+activate BP
+BP -> I: getProduct
+activate I
+I --> BP: AccountID
+deactivate I
+
+BP -> I: getAccount
+activate I
+I --> BP: carrierID
+deactivate I
+
+BP -> I: getCarrier
+activate I
+I --> BP: contractCompanyID
+deactivate I
+
+BP -> I: getContractCompany
+activate I
+I --> BP: ContractCompanyName
+deactivate I
+
+BP --> B: ContractCompanyName
+deactivate BP
+
+B -> M:
+activate M
+M -> M: Generate Email from Template
+M -> M: Send Email
+M --> B: Email Sent Status
+deactivate M
+
+B --> F: Response
+deactivate B
+
+@enduml

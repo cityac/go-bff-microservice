@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.bff.api.name }}
+  labels:
+    app: {{ .Values.bff.api.name }}
+spec:
+  replicas: {{ .Values.replicas}}
+  selector:
+    matchLabels:
+      app: {{ .Values.bff.api.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.bff.api.name }}
+    spec:
+      imagePullSecrets:
+      - name: {{ .Values.imageCredentials.name }}
+      containers:
+      - name: {{ .Values.bff.api.name }}
+        image: "registry.HIDDEN.com/HIDDEN/bff/bff/releases:{{ .Values.appEnv }}-{{ .Values.tag }}"
+        imagePullPolicy: Always
+        ports:
+        - containerPort: {{ .Values.bff.port }}
+        env:
+        - name: app_env
+          value: {{ .Values.appEnv }}
+        - name: vaulttoken
+          valueFrom:
+            secretKeyRef:
+              key: vaulttoken
+              name: vaulttoken
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: {{ .Values.bff.port }}
+          initialDelaySeconds: 5
+          periodSeconds:
+            {{- if eq .Values.appEnv "dev" }} 120
+            {{- else if eq .Values.appEnv "stage" }} 120
+            {{- else if eq .Values.appEnv "prod-enterprise" }} 10
+            {{- else if eq .Values.appEnv "prod-transit" }} 10
+            {{- else }} 20
+            {{- end }}
+          timeoutSeconds: 3
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: {{ .Values.bff.port }}
+          initialDelaySeconds: 5
+          periodSeconds:
+            {{- if eq .Values.appEnv "dev" }} 120
+            {{- else if eq .Values.appEnv "stage" }} 120
+            {{- else if eq .Values.appEnv "prod-enterprise" }} 10
+            {{- else if eq .Values.appEnv "prod-transit" }} 10
+            {{- else }} 50
+            {{- end }}
+          timeoutSeconds: 3

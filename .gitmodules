@@ -1,0 +1,3 @@
+[submodule "shadiaosocketio"]
+	path = shadiaosocketio
+	url = git@gitlab.HIDDEN.com:HIDDENsip/shadiaosocketio.git
